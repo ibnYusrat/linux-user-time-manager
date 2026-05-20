@@ -72,10 +72,10 @@ cp /etc/pam.d/common-account /etc/pam.d/common-account.bak
 if ! grep -q "pam_check.py" /etc/pam.d/common-account; then
     # Add our check before pam_permit/pam_deny
     # We want it to be 'requisite' so it fails immediately if the script exits 1
-    sed -i "/account required pam_time.so/a account [success=ok ignore=ignore default=bad] pam_exec.so $PYTHON_PATH $INSTALL_DIR/pam_check.py" /etc/pam.d/common-account
+    sed -i "/account required pam_time.so/a account [success=ok ignore=ignore default=bad] pam_exec.so stdout quiet $PYTHON_PATH $INSTALL_DIR/pam_check.py" /etc/pam.d/common-account
 else
     # Update existing line if python path changed
-    sed -i "s|pam_exec.so .* pam_check.py|pam_exec.so $PYTHON_PATH $INSTALL_DIR/pam_check.py|g" /etc/pam.d/common-account
+    sed -i "s|pam_exec.so .* pam_check.py|pam_exec.so stdout quiet $PYTHON_PATH $INSTALL_DIR/pam_check.py|g" /etc/pam.d/common-account
 fi
 
 echo "Cleaning up old hack files..."

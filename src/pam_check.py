@@ -78,4 +78,5 @@ if __name__ == "__main__":
     if check_access(user):
         sys.exit(0)
     else:
+        print("Not allowed to login at this time.")
         sys.exit(1)
