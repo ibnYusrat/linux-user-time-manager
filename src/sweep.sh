@@ -12,6 +12,8 @@ fi
 /usr/bin/python3 - << 'EOF'
 import json
 import os
+import pwd
+import grp
 import subprocess
 from datetime import datetime, timedelta
 
@@ -26,7 +28,22 @@ except Exception:
 now = datetime.now()
 curr_val = int(now.strftime("%H%M"))
 
+try:
+    sudo_users = grp.getgrnam('sudo').gr_mem
+except:
+    sudo_users = []
+
 for username, user_config in config.get("users", {}).items():
+    # HARD FAILSAFE: Never log out administrators
+    if username == 'root' or username in sudo_users:
+        continue
+    try:
+        p = pwd.getpwnam(username)
+        if p.pw_uid < 1000:
+            continue
+    except:
+        continue
+
     # 1. Check standard window
     start_val = int(user_config.get("start_time", "0000"))
     end_val = int(user_config.get("end_time", "2359"))
@@ -52,12 +69,9 @@ for username, user_config in config.get("users", {}).items():
 
     # If they are NOT in window and DO NOT have an exception, kick them out
     if not is_in_window and not has_exception:
-        # Check if user is actually logged in
         try:
             user_id = subprocess.check_output(['id', '-u', username]).decode('utf-8').strip()
-            # If pgrep returns 0, they have processes
             if subprocess.call(['pgrep', '-u', user_id], stdout=subprocess.DEVNULL) == 0:
-                # Find DBUS for notification
                 dbus_pid = subprocess.check_output(f"pgrep -u {user_id} -x xfce4-session || pgrep -u {user_id} -x systemd | head -n 1", shell=True).decode('utf-8').strip()
                 
                 if dbus_pid:
@@ -69,12 +83,10 @@ for username, user_config in config.get("users", {}).items():
                             break
                     
                     if dbus_addr:
-                        # Send notification
                         cmd = f"sudo -u {username} DBUS_SESSION_BUS_ADDRESS={dbus_addr} notify-send -u critical -t 10000 'Time Limit Reached' 'Your allowed time frame has ended.\\n\\nLogging out in 10 seconds...'"
                         subprocess.call(cmd, shell=True)
                         subprocess.call(['sleep', '10'])
                 
-                # Terminate user
                 subprocess.call(['loginctl', 'terminate-user', username])
         except Exception as e:
             pass

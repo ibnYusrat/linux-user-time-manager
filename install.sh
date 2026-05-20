@@ -22,14 +22,17 @@ cp src/pam_check.py "$INSTALL_DIR/"
 cp src/api.py "$INSTALL_DIR/"
 cp src/templates/index.html "$INSTALL_DIR/templates/"
 
-# Create initial config if not exists
-if [ ! -f "$CONFIG_DIR/config.json" ]; then
-    echo '{"users": {"ibrahim": {"start_time": "0600", "end_time": "1300", "exception_until": null}, "fatimah": {"start_time": "0600", "end_time": "1300", "exception_until": null}}}' > "$CONFIG_DIR/config.json"
+# Create default credentials if not exists
+if [ ! -f "$CONFIG_DIR/credentials.json" ]; then
+    echo '{"username": "admin", "password": "admin123"}' > "$CONFIG_DIR/credentials.json"
 fi
+
+# Create initial config if not exists
 
 chown -R root:root "$INSTALL_DIR"
 chown -R root:root "$CONFIG_DIR"
 chmod 644 "$CONFIG_DIR/config.json"
+chmod 600 "$CONFIG_DIR/credentials.json"
 # Give the API user (we'll use a dedicated user later or just root for now) write access to config
 chmod 666 "$CONFIG_DIR/config.json"
 

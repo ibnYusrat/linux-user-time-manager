@@ -1,14 +1,32 @@
 import sys
 import json
 import os
+import pwd
+import grp
 from datetime import datetime, timedelta
 
 CONFIG_PATH = "/etc/user-time-manager/config.json"
 
+def is_admin(username):
+    if username == 'root': 
+        return True
+    try:
+        p = pwd.getpwnam(username)
+        if p.pw_uid < 1000: 
+            return True
+        if username in grp.getgrnam('sudo').gr_mem: 
+            return True
+    except:
+        pass
+    return False
+
 def check_access(username):
-    # 1. Load configuration
+    # HARD FAILSAFE: Never block administrators or system accounts
+    if is_admin(username):
+        return True
+
     if not os.path.exists(CONFIG_PATH):
-        return True # Default to allow if config missing to prevent lockout
+        return True
         
     try:
         with open(CONFIG_PATH, 'r') as f:
@@ -18,13 +36,12 @@ def check_access(username):
 
     user_config = config.get("users", {}).get(username)
     if not user_config:
-        return True # Not a restricted user
+        return True
 
     now = datetime.now()
     curr_time = now.strftime("%H%M")
     curr_val = int(curr_time)
 
-    # 2. Check standard time window
     start_val = int(user_config.get("start_time", "0000"))
     end_val = int(user_config.get("end_time", "2359"))
     
@@ -32,14 +49,13 @@ def check_access(username):
     if start_val < end_val:
         if start_val <= curr_val < end_val:
             is_in_window = True
-    else: # Crosses midnight
+    else: 
         if curr_val >= start_val or curr_val < end_val:
             is_in_window = True
 
     if is_in_window:
         return True
 
-    # 3. Check for active exceptions
     exception_until = user_config.get("exception_until")
     if exception_until:
         try:
@@ -52,8 +68,6 @@ def check_access(username):
     return False
 
 if __name__ == "__main__":
-    # PAM passes the username as an environment variable or argument
-    # For pam_exec, it is often via PAM_USER env var
     user = os.environ.get("PAM_USER")
     if not user and len(sys.argv) > 1:
         user = sys.argv[1]
@@ -62,6 +76,6 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if check_access(user):
-        sys.exit(0) # Success
+        sys.exit(0)
     else:
-        sys.exit(1) # Failure
+        sys.exit(1)

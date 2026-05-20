@@ -4,12 +4,16 @@
     <title>Time Manager</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
-        .user-card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 8px; shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .btn { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-right: 5px; }
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; max-width: 600px; margin: 0 auto; }
+        .user-card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-right: 5px; margin-top: 5px; }
         .btn-plus { background: #4CAF50; color: white; }
         .btn-reset { background: #f44336; color: white; }
+        .btn-save { background: #2196F3; color: white; }
         .status { color: #666; font-size: 0.9em; margin: 10px 0; }
+        .schedule-form { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #f9f9f9; padding: 10px; border-radius: 4px; border: 1px solid #ddd;}
+        .schedule-form input { padding: 5px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;}
+        .schedule-form label { font-weight: bold; font-size: 0.9em; }
     </style>
 </head>
 <body>
@@ -17,17 +21,26 @@
     {% for username, data in users.items() %}
     <div class="user-card">
         <h2>{{ username }}</h2>
-        <p>Allowed: {{ data.start_time[:2] }}:{{ data.start_time[2:] }} - {{ data.end_time[:2] }}:{{ data.end_time[2:] }}</p>
+        
+        <div class="schedule-form">
+            <label>Start Time:</label>
+            <input type="time" id="start-{{username}}" value="{{ data.start_time[:2] }}:{{ data.start_time[2:] }}">
+            <label>End Time:</label>
+            <input type="time" id="end-{{username}}" value="{{ data.end_time[:2] }}:{{ data.end_time[2:] }}">
+            <button class="btn btn-save" onclick="updateSchedule('{{ username }}')">Save Schedule</button>
+        </div>
+
         <div class="status" id="status-{{ username }}">
             {% if data.exception_until %}
-                Extension active until: {{ data.exception_until[11:16] }}
+                <strong>Active Exception:</strong> Allowed until {{ data.exception_until[11:16] }}
             {% else %}
-                No extension active.
+                No temporary exception active.
             {% endif %}
         </div>
+        
         <button class="btn btn-plus" onclick="extend('{{ username }}', 60)">+1 Hour</button>
         <button class="btn btn-plus" onclick="extend('{{ username }}', 15)">+15 Mins</button>
-        <button class="btn btn-reset" onclick="reset('{{ username }}')">Reset</button>
+        <button class="btn btn-reset" onclick="reset('{{ username }}')">Cancel Exception</button>
     </div>
     {% endfor %}
 
@@ -41,7 +54,7 @@
             .then(res => res.json())
             .then(data => {
                 if(data.status === 'success') {
-                    document.getElementById('status-' + username).innerText = 'Extension active until: ' + data.new_expiry;
+                    document.getElementById('status-' + username).innerHTML = '<strong>Active Exception:</strong> Allowed until ' + data.new_expiry;
                 }
             });
         }
@@ -54,7 +67,22 @@
             .then(res => res.json())
             .then(data => {
                 if(data.status === 'success') {
-                    document.getElementById('status-' + username).innerText = 'No extension active.';
+                    document.getElementById('status-' + username).innerText = 'No temporary exception active.';
+                }
+            });
+        }
+        function updateSchedule(username) {
+            const start = document.getElementById('start-' + username).value;
+            const end = document.getElementById('end-' + username).value;
+            fetch('/api/update_schedule', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username: username, start_time: start, end_time: end})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    alert('Permanent schedule saved successfully for ' + username);
                 }
             });
         }
