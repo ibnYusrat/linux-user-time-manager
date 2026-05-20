@@ -81,6 +81,7 @@ fi
 echo "Cleaning up old hack files..."
 rm -f /etc/cron.d/enforce-time-sweep
 rm -f /etc/security/time_msg
+sed -i "/account required pam_time.so/d" /etc/pam.d/common-account
 
 echo "Installation complete. API running on port 5000."
 
