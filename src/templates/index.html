@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Time Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
+        .user-card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 8px; shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-right: 5px; }
+        .btn-plus { background: #4CAF50; color: white; }
+        .btn-reset { background: #f44336; color: white; }
+        .status { color: #666; font-size: 0.9em; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>User Time Manager</h1>
+    {% for username, data in users.items() %}
+    <div class="user-card">
+        <h2>{{ username }}</h2>
+        <p>Allowed: {{ data.start_time[:2] }}:{{ data.start_time[2:] }} - {{ data.end_time[:2] }}:{{ data.end_time[2:] }}</p>
+        <div class="status" id="status-{{ username }}">
+            {% if data.exception_until %}
+                Extension active until: {{ data.exception_until[11:16] }}
+            {% else %}
+                No extension active.
+            {% endif %}
+        </div>
+        <button class="btn btn-plus" onclick="extend('{{ username }}', 60)">+1 Hour</button>
+        <button class="btn btn-plus" onclick="extend('{{ username }}', 15)">+15 Mins</button>
+        <button class="btn btn-reset" onclick="reset('{{ username }}')">Reset</button>
+    </div>
+    {% endfor %}
+
+    <script>
+        function extend(username, minutes) {
+            fetch('/api/extend', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username: username, minutes: minutes})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    document.getElementById('status-' + username).innerText = 'Extension active until: ' + data.new_expiry;
+                }
+            });
+        }
+        function reset(username) {
+            fetch('/api/reset', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username: username})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    document.getElementById('status-' + username).innerText = 'No extension active.';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
