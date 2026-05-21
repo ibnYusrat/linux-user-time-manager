@@ -8,6 +8,8 @@
 
 Designed as an open-source alternative to proprietary solutions like *Microsoft Family Safety* or *Google Family Link*, this tool gives parents complete, airtight control over when their children can log in, while offering the flexibility of a mobile-friendly web dashboard to grant remote exceptions on the fly.
 
+![Linux Family Time Manager Screenshot](screenshot.jpg)
+
 ---
 
 ## ✨ Key Features
