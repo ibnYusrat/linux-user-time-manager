@@ -56,6 +56,46 @@ def save_config(config):
     with open(CONFIG_PATH, 'w') as f:
         json.dump(config, f, indent=4)
 
+import re
+import subprocess
+
+def get_usage_from_logs(username):
+    """Attempt to recover today's usage from system logs (last command)."""
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    total_mins = 0
+    try:
+        # last -F gives full date/time stamps
+        output = subprocess.check_output(["last", "-F", username], text=True)
+        for line in output.splitlines():
+            if not line.strip() or username not in line:
+                continue
+            
+            # Check if session started today
+            # Format: username tty7 :0 Fri May 22 17:08:49 2026 ...
+            parts = line.split()
+            if len(parts) < 10: continue
+            
+            try:
+                start_date_str = f"{parts[4]} {parts[5]} {parts[7]}" # May 22 2026
+                if datetime.strptime(start_date_str, "%b %d %Y").strftime("%Y-%m-%d") != today_str:
+                    continue
+            except:
+                continue
+
+            if "still logged in" in line:
+                full_start_str = " ".join(parts[3:8])
+                start_time = datetime.strptime(full_start_str, "%a %b %d %H:%M:%S %Y")
+                delta = datetime.now() - start_time
+                total_mins += int(delta.total_seconds() / 60)
+            elif "(" in line and ")" in line:
+                match = re.search(r"\((\d+):(\d+)\)", line)
+                if match:
+                    hours, mins = map(int, match.groups())
+                    total_mins += hours * 60 + mins
+    except:
+        pass
+    return total_mins
+
 @app.route('/')
 @requires_auth
 def index():
@@ -80,7 +120,34 @@ def index():
         save_config(config)
         
     # Only send actual non-admin users to the frontend template
-    display_users = {k: v for k, v in config['users'].items() if k in non_admins}
+    display_users = {}
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    for u in non_admins:
+        if u in config['users']:
+            user_data = config['users'][u].copy()
+            if "daily_usage" not in user_data:
+                user_data["daily_usage"] = {}
+            
+            usage_mins = user_data["daily_usage"].get(today, 0)
+            
+            # If tracking just started or data is missing, try log recovery
+            if usage_mins == 0:
+                usage_mins = get_usage_from_logs(u)
+                # Save it back to config so sweep can increment from here
+                if usage_mins > 0:
+                    if "daily_usage" not in config['users'][u]:
+                        config['users'][u]["daily_usage"] = {}
+                    config['users'][u]["daily_usage"][today] = usage_mins
+                    changed = True
+
+            user_data["usage_today_formatted"] = f"{usage_mins // 60}h {usage_mins % 60}m"
+            user_data["usage_mins"] = usage_mins
+            display_users[u] = user_data
+            
+    if changed:
+        save_config(config)
+            
     return render_template('index.html', users=display_users)
 
 @app.route('/api/extend', methods=['POST'])

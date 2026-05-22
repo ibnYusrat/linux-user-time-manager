@@ -67,6 +67,31 @@ for username, user_config in config.get("users", {}).items():
         except:
             pass
 
+    # 3. Track Usage (New)
+    try:
+        user_id = subprocess.check_output(['id', '-u', username]).decode('utf-8').strip()
+        is_logged_in = subprocess.call(['pgrep', '-u', user_id], stdout=subprocess.DEVNULL) == 0
+        if is_logged_in:
+            today = now.strftime("%Y-%m-%d")
+            if "daily_usage" not in user_config:
+                user_config["daily_usage"] = {}
+            
+            # Increment by 5 minutes (assuming 5-min cron)
+            current_usage = user_config["daily_usage"].get(today, 0)
+            user_config["daily_usage"][today] = current_usage + 5
+            
+            # Keep only last 7 days of usage data
+            dates = sorted(user_config["daily_usage"].keys())
+            if len(dates) > 7:
+                for old_date in dates[:-7]:
+                    del user_config["daily_usage"][old_date]
+            
+            config["users"][username] = user_config
+            with open(CONFIG_PATH, 'w') as f:
+                json.dump(config, f, indent=4)
+    except Exception as e:
+        pass
+
     # If they are NOT in window and DO NOT have an exception, kick them out
     if not is_in_window and not has_exception:
         try:

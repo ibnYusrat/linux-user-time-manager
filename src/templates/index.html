@@ -20,7 +20,13 @@
     <h1>User Time Manager</h1>
     {% for username, data in users.items() %}
     <div class="user-card">
-        <h2>{{ username }}</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0;">{{ username }}</h2>
+            <div style="text-align: right;">
+                <div style="font-size: 0.8em; color: #666; text-transform: uppercase; font-weight: bold;">Used Today</div>
+                <div style="font-size: 1.5em; font-weight: bold; color: #2196F3;">{{ data.usage_today_formatted }}</div>
+            </div>
+        </div>
         
         <div class="schedule-form">
             <label>Start Time:</label>

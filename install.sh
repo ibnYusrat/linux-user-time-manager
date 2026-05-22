@@ -61,7 +61,7 @@ cp src/sweep.sh "$INSTALL_DIR/"
 # Update the python path inside sweep.sh
 sed -i "s|/usr/bin/python3|$PYTHON_PATH|g" "$INSTALL_DIR/sweep.sh"
 chmod +x "$INSTALL_DIR/sweep.sh"
-echo "*/15 * * * * root $INSTALL_DIR/sweep.sh" > /etc/cron.d/user-time-sweep
+echo "*/5 * * * * root $INSTALL_DIR/sweep.sh" > /etc/cron.d/user-time-sweep
 chmod 644 /etc/cron.d/user-time-sweep
 
 echo "Configuring PAM..."
