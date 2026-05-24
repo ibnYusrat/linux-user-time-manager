@@ -30,6 +30,12 @@ def save_config(config):
         json.dump(config, f, indent=4)
 
 def load_creds():
+    if not os.path.exists(CRED_PATH):
+        # Generate a new secret if it doesn't exist
+        secret = pyotp.random_base32()
+        creds = {"totp_secret": secret, "totp_verified": False}
+        save_creds(creds)
+        return creds
     with open(CRED_PATH, 'r') as f:
         return json.load(f)
 
