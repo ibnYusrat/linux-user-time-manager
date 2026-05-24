@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>2FA Setup</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; max-width: 500px; margin: 0 auto; text-align: center; }
+        .setup-card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        img { max-width: 250px; border: 1px solid #ddd; margin: 20px 0; }
+        input { font-size: 1.5em; width: 100%; text-align: center; letter-spacing: 5px; padding: 10px; margin: 20px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { background: #4CAF50; color: white; padding: 15px; border: none; border-radius: 5px; width: 100%; font-size: 1.1em; cursor: pointer; font-weight: bold; }
+        .instructions { text-align: left; color: #555; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="setup-card">
+        <h1>🔒 Secure Setup</h1>
+        <p class="instructions">
+            1. Install <b>Google Authenticator</b> or <b>Authy</b> on your phone.<br>
+            2. Scan the QR code below.<br>
+            3. Enter the 6-digit code from your app to verify.
+        </p>
+        
+        <img src="/api/qr" alt="Scan QR Code">
+        
+        <input type="text" id="setup-code" maxlength="6" inputmode="numeric" placeholder="000000" oninput="checkAutoSubmit()">
+        <button id="verify-btn" onclick="verifySetup()">Complete Enrollment</button>
+    </div>
+
+    <script>
+        function checkAutoSubmit() {
+            const code = document.getElementById('setup-code').value;
+            if (code.length === 6) {
+                verifySetup();
+            }
+        }
+
+        function verifySetup() {
+            const code = document.getElementById('setup-code').value;
+            if (code.length !== 6) return;
+
+            const btn = document.getElementById('verify-btn');
+            btn.disabled = true;
+            btn.innerText = 'Verifying...';
+
+            fetch('/api/verify_setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    window.location.href = '/';
+                } else {
+                    alert(data.message);
+                    btn.disabled = false;
+                    btn.innerText = 'Complete Enrollment';
+                    document.getElementById('setup-code').value = '';
+                    document.getElementById('setup-code').focus();
+                }
+            });
+        }
+    </script>
+</body>
+</html>

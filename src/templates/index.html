@@ -5,90 +5,124 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; padding: 20px; background: #f4f4f9; max-width: 600px; margin: 0 auto; }
-        .user-card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .btn { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-right: 5px; margin-top: 5px; }
-        .btn-plus { background: #4CAF50; color: white; }
-        .btn-reset { background: #f44336; color: white; }
-        .btn-save { background: #2196F3; color: white; }
-        .status { color: #666; font-size: 0.9em; margin: 10px 0; }
-        .schedule-form { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #f9f9f9; padding: 10px; border-radius: 4px; border: 1px solid #ddd;}
-        .schedule-form input { padding: 5px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;}
-        .schedule-form label { font-weight: bold; font-size: 0.9em; }
+        .user-card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .stats { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .usage { text-align: center; }
+        .bonus-badge { background: #E8F5E9; color: #2E7D32; padding: 5px 10px; border-radius: 15px; font-size: 0.8em; font-weight: bold; margin-top: 5px; display: inline-block; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        button { padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn-extend { background: #4CAF50; color: white; }
+        .btn-update { background: #2196F3; color: white; grid-column: span 2; }
+        .schedule { margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #666; }
+        input[type="time"] { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        #totp-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: white; padding: 30px; border-radius: 10px; width: 90%; max-width: 400px; text-align: center; }
+        #totp-code { font-size: 2em; width: 100%; text-align: center; letter-spacing: 10px; margin: 20px 0; border: 1px solid #ddd; border-radius: 5px; }
     </style>
 </head>
 <body>
     <h1>User Time Manager</h1>
-    {% for username, data in users.items() %}
-    <div class="user-card">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0;">{{ username }}</h2>
-            <div style="text-align: right;">
-                <div style="font-size: 0.8em; color: #666; text-transform: uppercase; font-weight: bold;">Used Today</div>
-                <div style="font-size: 1.5em; font-weight: bold; color: #2196F3;">{{ data.usage_today_formatted }}</div>
+
+    {% for user in users %}
+    <div class="user-card" id="card-{{ user.username }}">
+        <div class="stats">
+            <div style="font-size: 1.2em; font-weight: bold;">{{ user.username }}</div>
+            <div class="usage">
+                <label>Usage Today</label>
+                <div style="font-size: 1.5em; font-weight: bold; color: #2196F3;">{{ user.usage_today_formatted }}</div>
+                {% if user.has_exception %}
+                <div class="bonus-badge">Bonus until {{ user.exception_time }}</div>
+                {% endif %}
             </div>
         </div>
-        
-        <div class="schedule-form">
-            <label>Start Time:</label>
-            <input type="time" id="start-{{username}}" value="{{ data.start_time[:2] }}:{{ data.start_time[2:] }}">
-            <label>End Time:</label>
-            <input type="time" id="end-{{username}}" value="{{ data.end_time[:2] }}:{{ data.end_time[2:] }}">
-            <button class="btn btn-save" onclick="updateSchedule('{{ username }}')">Save Schedule</button>
+
+        <div class="controls">
+            <button class="btn-extend" onclick="promptTOTP('extend', '{{ user.username }}', 15)">+15 Mins</button>
+            <button class="btn-extend" onclick="promptTOTP('extend', '{{ user.username }}', 60)">+1 Hour</button>
         </div>
 
-        <div class="status" id="status-{{ username }}">
-            {% if data.exception_until %}
-                <strong>Active Exception:</strong> Allowed until {{ data.exception_until[11:16] }}
-            {% else %}
-                No temporary exception active.
-            {% endif %}
+        <div class="schedule">
+            <label>Start Time:</label>
+            <input type="time" id="start-{{ user.username }}" value="{{ user.start_time[:2] }}:{{ user.start_time[2:] }}">
+            <label>End Time:</label>
+            <input type="time" id="end-{{ user.username }}" value="{{ user.end_time[:2] }}:{{ user.end_time[2:] }}">
+            <button class="btn-update" onclick="promptTOTP('update', '{{ user.username }}')">Update Schedule</button>
         </div>
-        
-        <button class="btn btn-plus" onclick="extend('{{ username }}', 60)">+1 Hour</button>
-        <button class="btn btn-plus" onclick="extend('{{ username }}', 15)">+15 Mins</button>
-        <button class="btn btn-reset" onclick="reset('{{ username }}')">Cancel Exception</button>
     </div>
     {% endfor %}
 
+    <div id="totp-modal">
+        <div class="modal-content">
+            <h3>Enter 2FA Code</h3>
+            <p>Please enter the 6-digit code from your app.</p>
+            <input type="text" id="totp-code" maxlength="6" inputmode="numeric" placeholder="000000" oninput="checkAutoSubmit()">
+            <div style="display: flex; gap: 10px;">
+                <button id="modal-cancel-btn" style="background: #ccc; flex: 1;" onclick="closeModal()">Cancel</button>
+                <button id="modal-auth-btn" style="background: #4CAF50; color: white; flex: 2;" onclick="executeAction()">Authorize</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        function extend(username, minutes) {
-            fetch('/api/extend', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username: username, minutes: minutes})
-            })
-            .then(res => res.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    document.getElementById('status-' + username).innerHTML = '<strong>Active Exception:</strong> Allowed until ' + data.new_expiry;
-                }
-            });
+        let currentAction = null;
+
+        function checkAutoSubmit() {
+            const code = document.getElementById('totp-code').value;
+            if (code.length === 6) {
+                executeAction();
+            }
         }
-        function reset(username) {
-            fetch('/api/reset', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username: username})
-            })
-            .then(res => res.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    document.getElementById('status-' + username).innerText = 'No temporary exception active.';
-                }
-            });
+
+        function promptTOTP(type, username, value) {
+            currentAction = { type, username, value };
+            document.getElementById('totp-modal').style.display = 'flex';
+            document.getElementById('totp-code').focus();
+            document.getElementById('totp-code').value = '';
+            document.getElementById('modal-auth-btn').disabled = false;
+            document.getElementById('modal-auth-btn').innerText = 'Authorize';
         }
-        function updateSchedule(username) {
-            const start = document.getElementById('start-' + username).value;
-            const end = document.getElementById('end-' + username).value;
-            fetch('/api/update_schedule', {
+
+        function closeModal() {
+            document.getElementById('totp-modal').style.display = 'none';
+        }
+
+        function executeAction() {
+            const code = document.getElementById('totp-code').value;
+            if (code.length !== 6) return;
+
+            const authBtn = document.getElementById('modal-auth-btn');
+            authBtn.disabled = true;
+            authBtn.innerText = 'Verifying...';
+
+            let url = '';
+            let body = { code, username: currentAction.username };
+
+            if (currentAction.type === 'extend') {
+                url = '/api/extend';
+                body.minutes = currentAction.value;
+            } else {
+                url = '/api/update_schedule';
+                body.start_time = document.getElementById('start-' + currentAction.username).value;
+                body.end_time = document.getElementById('end-' + currentAction.username).value;
+            }
+
+            fetch(url, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username: username, start_time: start, end_time: end})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
             })
             .then(res => res.json())
             .then(data => {
-                if(data.status === 'success') {
-                    alert('Permanent schedule saved successfully for ' + username);
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                    authBtn.disabled = false;
+                    authBtn.innerText = 'Authorize';
+                    document.getElementById('totp-code').value = '';
+                    document.getElementById('totp-code').focus();
                 }
             });
         }

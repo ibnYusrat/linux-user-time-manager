@@ -1,87 +1,77 @@
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, redirect, url_for
 import json
 import os
-import pwd
-import grp
+import subprocess
 from datetime import datetime, timedelta
 from functools import wraps
+import pwd
+import grp
+import re
+import pyotp
+import qrcode
+import io
+import base64
+
+import socket
 
 app = Flask(__name__)
+
 CONFIG_PATH = "/etc/user-time-manager/config.json"
 CRED_PATH = "/etc/user-time-manager/credentials.json"
 
-def get_non_admin_users():
-    try:
-        sudo_users = grp.getgrnam('sudo').gr_mem
-    except KeyError:
-        sudo_users = []
-        
-    users = []
-    for p in pwd.getpwall():
-        if 1000 <= p.pw_uid < 60000 and p.pw_name not in sudo_users and p.pw_name != 'nobody':
-            users.append(p.pw_name)
-    return users
-
-def get_credentials():
-    try:
-        with open(CRED_PATH, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return {"username": "admin", "password": "admin123"}
-
-def check_auth(username, password):
-    creds = get_credentials()
-    return username == creds.get("username", "admin") and password == creds.get("password", "admin123")
-
-def authenticate():
-    return Response('Authentication required.', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
-
-def requires_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return authenticate()
-        return f(*args, **kwargs)
-    return decorated
-
 def load_config():
-    try:
-        with open(CONFIG_PATH, 'r') as f:
-            return json.load(f)
-    except Exception:
+    if not os.path.exists(CONFIG_PATH):
         return {"users": {}}
+    with open(CONFIG_PATH, 'r') as f:
+        return json.load(f)
 
 def save_config(config):
     with open(CONFIG_PATH, 'w') as f:
         json.dump(config, f, indent=4)
 
-import re
-import subprocess
+def load_creds():
+    with open(CRED_PATH, 'r') as f:
+        return json.load(f)
+
+def save_creds(creds):
+    with open(CRED_PATH, 'w') as f:
+        json.dump(creds, f, indent=4)
+
+def verify_totp(code):
+    creds = load_creds()
+    secret = creds.get('totp_secret')
+    if not secret:
+        return False
+    totp = pyotp.TOTP(secret)
+    return totp.verify(code)
+
+def get_non_admin_users():
+    users = []
+    for p in pwd.getpwall():
+        if p.pw_uid >= 1000 and p.pw_uid < 65534:
+            try:
+                if 'sudo' not in [g.gr_name for g in grp.getgrall() if p.pw_name in g.gr_mem]:
+                    users.append(p.pw_name)
+            except:
+                users.append(p.pw_name)
+    return users
 
 def get_usage_from_logs(username):
-    """Attempt to recover today's usage from system logs (last command)."""
     today_str = datetime.now().strftime("%Y-%m-%d")
     total_mins = 0
     try:
-        # last -F gives full date/time stamps
         output = subprocess.check_output(["last", "-F", username], text=True)
         for line in output.splitlines():
             if not line.strip() or username not in line:
                 continue
-            
-            # Check if session started today
-            # Format: username tty7 :0 Fri May 22 17:08:49 2026 ...
             parts = line.split()
             if len(parts) < 10: continue
-            
             try:
-                start_date_str = f"{parts[4]} {parts[5]} {parts[7]}" # May 22 2026
+                start_date_str = f"{parts[4]} {parts[5]} {parts[7]}" 
                 if datetime.strptime(start_date_str, "%b %d %Y").strftime("%Y-%m-%d") != today_str:
                     continue
             except:
                 continue
-
             if "still logged in" in line:
                 full_start_str = " ".join(parts[3:8])
                 start_time = datetime.strptime(full_start_str, "%a %b %d %H:%M:%S %Y")
@@ -97,63 +87,83 @@ def get_usage_from_logs(username):
     return total_mins
 
 @app.route('/')
-@requires_auth
 def index():
+    creds = load_creds()
+    if not creds.get('totp_verified'):
+        return redirect(url_for('setup_2fa'))
+
     config = load_config()
     if "users" not in config:
         config["users"] = {}
         
     non_admins = get_non_admin_users()
     changed = False
-    
-    # Auto-add newly discovered non-admin users with a default schedule
     for u in non_admins:
         if u not in config['users']:
             config['users'][u] = {
                 "start_time": "0600",
                 "end_time": "1800",
-                "exception_until": None
+                "exception_until": None,
+                "daily_usage": {}
             }
             changed = True
-            
     if changed:
         save_config(config)
-        
-    # Only send actual non-admin users to the frontend template
-    display_users = {}
+
+    display_users = []
     today = datetime.now().strftime("%Y-%m-%d")
-    
-    for u in non_admins:
-        if u in config['users']:
-            user_data = config['users'][u].copy()
+    for u, user_data in config['users'].items():
+        if u in non_admins:
+            user_data["username"] = u
             if "daily_usage" not in user_data:
                 user_data["daily_usage"] = {}
-            
             usage_mins = user_data["daily_usage"].get(today, 0)
-            
-            # If tracking just started or data is missing, try log recovery
             if usage_mins == 0:
                 usage_mins = get_usage_from_logs(u)
-                # Save it back to config so sweep can increment from here
-                if usage_mins > 0:
-                    if "daily_usage" not in config['users'][u]:
-                        config['users'][u]["daily_usage"] = {}
-                    config['users'][u]["daily_usage"][today] = usage_mins
-                    changed = True
-
             user_data["usage_today_formatted"] = f"{usage_mins // 60}h {usage_mins % 60}m"
             user_data["usage_mins"] = usage_mins
-            display_users[u] = user_data
             
-    if changed:
-        save_config(config)
+            # Format exception for UI
+            user_data["has_exception"] = False
+            user_data["exception_time"] = ""
+            if user_data.get("exception_until"):
+                try:
+                    expiry = datetime.fromisoformat(user_data["exception_until"])
+                    if expiry > datetime.now():
+                        user_data["has_exception"] = True
+                        user_data["exception_time"] = expiry.strftime("%H:%M")
+                except:
+                    pass
+            
+            display_users.append(user_data)
             
     return render_template('index.html', users=display_users)
 
+@app.route('/setup')
+def setup_2fa():
+    creds = load_creds()
+    if creds.get('totp_verified'):
+        return redirect(url_for('index'))
+    return render_template('setup.html')
+
+@app.route('/api/verify_setup', methods=['POST'])
+def verify_setup():
+    data = request.json
+    code = data.get('code')
+    if verify_totp(code):
+        creds = load_creds()
+        creds['totp_verified'] = True
+        save_creds(creds)
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Invalid code. Try again."}), 401
+
 @app.route('/api/extend', methods=['POST'])
-@requires_auth
 def extend_time():
     data = request.json
+    code = data.get('code')
+    if not verify_totp(code):
+        return jsonify({"status": "error", "message": "Invalid 2FA Code"}), 401
+
     username = data.get('username')
     minutes = int(data.get('minutes', 60))
     
@@ -177,35 +187,50 @@ def extend_time():
     
     return jsonify({"status": "error", "message": "User not found"}), 404
 
-@app.route('/api/reset', methods=['POST'])
-@requires_auth
-def reset_time():
-    data = request.json
-    username = data.get('username')
-    config = load_config()
-    if username in config['users']:
-        config['users'][username]['exception_until'] = None
-        save_config(config)
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 404
-
 @app.route('/api/update_schedule', methods=['POST'])
-@requires_auth
 def update_schedule():
     data = request.json
+    code = data.get('code')
+    if not verify_totp(code):
+        return jsonify({"status": "error", "message": "Invalid 2FA Code"}), 401
+
     username = data.get('username')
     start = data.get('start_time')
     end = data.get('end_time')
     
     config = load_config()
     if username in config['users']:
-        if start: 
+        if start:
             config['users'][username]['start_time'] = start.replace(":", "")
-        if end: 
+        if end:
             config['users'][username]['end_time'] = end.replace(":", "")
         save_config(config)
         return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 404
+    return jsonify({"status": "error", "message": "User not found"}), 404
+
+@app.route('/api/qr')
+def get_qr():
+    creds = load_creds()
+    if creds.get('totp_verified'):
+        return "Setup already complete", 403
+        
+    secret = creds.get('totp_secret')
+    if not secret:
+        return "Not configured", 404
+    
+    hostname = socket.gethostname()
+    totp = pyotp.TOTP(secret)
+    provisioning_uri = totp.provisioning_uri(
+        name=f"Admin@{hostname}", 
+        issuer_name=f"Time Manager ({hostname})"
+    )
+    
+    img = qrcode.make(provisioning_uri)
+    buf = io.BytesIO()
+    img.save(buf)
+    buf.seek(0)
+    return Response(buf.getvalue(), mimetype='image/png')
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
