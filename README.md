@@ -27,7 +27,7 @@ Designed as an open-source alternative to proprietary solutions like *Microsoft 
 
 ### 1. Installation
 ```bash
-git clone https://github.com/yourusername/linux-family-time-manager.git
+git clone https://github.com/ibnYusrat/linux-family-time-manager.git
 cd linux-family-time-manager
 sudo ./install.sh
 ```
