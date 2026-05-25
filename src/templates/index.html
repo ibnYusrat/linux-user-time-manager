@@ -41,6 +41,9 @@
         <div class="controls">
             <button class="btn-extend" onclick="promptTOTP('extend', '{{ user.username }}', 15)">+15 Mins</button>
             <button class="btn-extend" onclick="promptTOTP('extend', '{{ user.username }}', 60)">+1 Hour</button>
+            {% if user.has_exception %}
+            <button style="background: #f44336; color: white; grid-column: span 2;" onclick="cancelBonus('{{ user.username }}')">Cancel Bonus Time</button>
+            {% endif %}
         </div>
 
         <div class="schedule">
