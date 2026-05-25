@@ -238,5 +238,18 @@ def get_qr():
     return Response(buf.getvalue(), mimetype='image/png')
 
 
+@app.route('/api/cancel_bonus', methods=['POST'])
+def cancel_bonus():
+    data = request.json
+    username = data.get('username')
+    
+    config = load_config()
+    if username in config['users']:
+        config['users'][username]['exception_until'] = None
+        save_config(config)
+        return jsonify({"status": "success"})
+    
+    return jsonify({"status": "error", "message": "User not found"}), 404
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

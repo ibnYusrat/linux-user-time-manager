@@ -88,6 +88,24 @@
             document.getElementById('totp-modal').style.display = 'none';
         }
 
+        function cancelBonus(username) {
+            if (!confirm('Are you sure you want to cancel the bonus time for ' + username + '?')) return;
+            
+            fetch('/api/cancel_bonus', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+        }
+
         function executeAction() {
             const code = document.getElementById('totp-code').value;
             if (code.length !== 6) return;
