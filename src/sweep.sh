@@ -97,20 +97,23 @@ for username, user_config in config.get("users", {}).items():
         try:
             user_id = subprocess.check_output(['id', '-u', username]).decode('utf-8').strip()
             if subprocess.call(['pgrep', '-u', user_id], stdout=subprocess.DEVNULL) == 0:
-                dbus_pid = subprocess.check_output(f"pgrep -u {user_id} -x xfce4-session || pgrep -u {user_id} -x systemd | head -n 1", shell=True).decode('utf-8').strip()
-                
-                if dbus_pid:
-                    env_raw = subprocess.check_output(['cat', f'/proc/{dbus_pid}/environ']).decode('utf-8', errors='ignore')
-                    dbus_addr = None
-                    for line in env_raw.split('\0'):
-                        if line.startswith('DBUS_SESSION_BUS_ADDRESS='):
-                            dbus_addr = line.split('=', 1)[1]
-                            break
+                try:
+                    dbus_pid = subprocess.check_output(f"pgrep -u {user_id} -x xfce4-session || pgrep -u {user_id} -x systemd | head -n 1", shell=True).decode('utf-8').strip()
                     
-                    if dbus_addr:
-                        cmd = f"sudo -u {username} DBUS_SESSION_BUS_ADDRESS={dbus_addr} notify-send -u critical -t 10000 'Time Limit Reached' 'Your allowed time frame has ended.\\n\\nLogging out in 10 seconds...'"
-                        subprocess.call(cmd, shell=True)
-                        subprocess.call(['sleep', '10'])
+                    if dbus_pid:
+                        env_raw = subprocess.check_output(['cat', f'/proc/{dbus_pid}/environ']).decode('utf-8', errors='ignore')
+                        dbus_addr = None
+                        for line in env_raw.split('\0'):
+                            if line.startswith('DBUS_SESSION_BUS_ADDRESS='):
+                                dbus_addr = line.split('=', 1)[1]
+                                break
+                        
+                        if dbus_addr:
+                            cmd = f"sudo -u {username} DBUS_SESSION_BUS_ADDRESS={dbus_addr} notify-send -u critical -t 10000 'Time Limit Reached' 'Your allowed time frame has ended.\\n\\nLogging out in 10 seconds...'"
+                            subprocess.call(cmd, shell=True)
+                            subprocess.call(['sleep', '10'])
+                except Exception:
+                    pass
                 
                 subprocess.call(['loginctl', 'terminate-user', username])
         except Exception as e:
